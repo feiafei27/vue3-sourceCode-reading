@@ -139,6 +139,7 @@ export class ReactiveEffect<T = any> {
   }
 }
 
+// 清空指定 ReactiveEffect 实例的依赖收集
 function cleanupEffect(effect: ReactiveEffect) {
   const { deps } = effect
   if (deps.length) {

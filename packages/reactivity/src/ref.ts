@@ -29,6 +29,7 @@ type RefBase<T> = {
   value: T
 }
 
+// 工具函数，用于对一个 ref 进行收集依赖
 export function trackRefValue(ref: RefBase<any>) {
   if (shouldTrack && activeEffect) {
     ref = toRaw(ref)
@@ -83,7 +84,9 @@ export function shallowRef<T extends object>(
 ): T extends Ref ? T : ShallowRef<T>
 export function shallowRef<T>(value: T): ShallowRef<T>
 export function shallowRef<T = any>(): ShallowRef<T | undefined>
+// shallowRef 内部还是通过 createRef 函数创建 Ref 值得
 export function shallowRef(value?: unknown) {
+  // 这里需要关注的点是，createRef 函数的第二个参数为 true，这表明创建的是一个浅的 Ref
   return createRef(value, true)
 }
 

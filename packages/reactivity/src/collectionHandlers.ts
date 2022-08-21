@@ -331,7 +331,9 @@ const [
   shallowReadonlyInstrumentations
 ] = /* #__PURE__*/ createInstrumentations()
 
+// 创建收集类数据的 Proxy get handler
 function createInstrumentationGetter(isReadonly: boolean, shallow: boolean) {
+  // instrumentations 是一个对象，这个对象的 key 是收集类数据的方法名，value 是对应的重写方法
   const instrumentations = shallow
     ? isReadonly
       ? shallowReadonlyInstrumentations
@@ -339,7 +341,7 @@ function createInstrumentationGetter(isReadonly: boolean, shallow: boolean) {
     : isReadonly
     ? readonlyInstrumentations
     : mutableInstrumentations
-
+  // 收集类数据的代理 get handler，借助这个重写收集类数据的方法
   return (
     target: CollectionTypes,
     key: string | symbol,
@@ -353,6 +355,7 @@ function createInstrumentationGetter(isReadonly: boolean, shallow: boolean) {
       return target
     }
 
+    // 如果 key 是需要重写的方法名时，返回 instrumentations[key]（返回重写的方法）
     return Reflect.get(
       hasOwn(instrumentations, key) && key in target
         ? instrumentations
@@ -363,6 +366,12 @@ function createInstrumentationGetter(isReadonly: boolean, shallow: boolean) {
   }
 }
 
+// 代理收集类型的数据和 object、Array 是不一样的，收集类型的数据有专门的属性和方法进行数据的读写，
+// 因此实现收集类数据响应式的关键是：重写收集类数据上的方法，重写的方法是使用 Proxy handler 中的 get，
+// 当我们执行 map.set(xx, xx) 函数时，其实内部执行了两个操作，第一个操作是获取 map 中的 set 方法，
+// 第二步才是执行这个方法，所以我们可以通过 get handler 自定义方法的获取逻辑，获取我们的重写方法。
+
+// 当代理的对象是 Map、Set、WeakMap 和 WeakSet 时，使用如下的 handler
 export const mutableCollectionHandlers: ProxyHandler<CollectionTypes> = {
   get: /*#__PURE__*/ createInstrumentationGetter(false, false)
 }
