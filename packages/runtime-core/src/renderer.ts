@@ -48,7 +48,7 @@ import {
 import { pauseTracking, resetTracking, ReactiveEffect } from '@vue/reactivity'
 import { updateProps } from './componentProps'
 import { updateSlots } from './componentSlots'
-import { pushWarningContext, popWarningContext, warn } from './warning'
+import { warn } from './warning'
 import { createAppAPI, CreateAppFunction } from './apiCreateApp'
 import { setRef } from './rendererTemplateRef'
 import {
@@ -58,15 +58,13 @@ import {
 } from './components/Suspense'
 import { TeleportImpl, TeleportVNode } from './components/Teleport'
 import { isKeepAlive, KeepAliveContext } from './components/KeepAlive'
-import { registerHMR, unregisterHMR, isHmrUpdating } from './hmr'
+import { unregisterHMR, isHmrUpdating } from './hmr'
 import { createHydrationFunctions, RootHydrateFunction } from './hydration'
 import { invokeDirectiveHook } from './directives'
 import { startMeasure, endMeasure } from './profiling'
 import {
   devtoolsComponentAdded,
   devtoolsComponentRemoved,
-  devtoolsComponentUpdated,
-  setDevtoolsHook
 } from './devtools'
 import { initFeatureFlags } from './featureFlags'
 import { isAsyncWrapper } from './apiAsyncComponent'
@@ -331,9 +329,6 @@ function baseCreateRenderer(
 
   const target = getGlobalThis()
   target.__VUE__ = true
-  if (__DEV__ || __FEATURE_PROD_DEVTOOLS__) {
-    setDevtoolsHook(target.__VUE_DEVTOOLS_GLOBAL_HOOK__, target)
-  }
 
   // 依赖于平台的具体操作方法是从外部传递进来的，这样可以使用 createRenderer 创建出依托于不同平台的渲染器
   const {
@@ -1227,8 +1222,7 @@ function baseCreateRenderer(
     isSVG,
     optimized
   ) => {
-    // 2.x compat may pre-create the component instance before actually
-    // mounting
+    // 创建组件实例对象
     const compatMountInstance =
       __COMPAT__ && initialVNode.isCompatRoot && initialVNode.component
     const instance: ComponentInternalInstance =
@@ -1239,29 +1233,15 @@ function baseCreateRenderer(
         parentSuspense
       ))
 
-    if (__DEV__ && instance.type.__hmrId) {
-      registerHMR(instance)
-    }
-
-    if (__DEV__) {
-      pushWarningContext(initialVNode)
-      startMeasure(instance, `mount`)
-    }
-
     // inject renderer internals for keepAlive
     if (isKeepAlive(initialVNode)) {
       ;(instance.ctx as KeepAliveContext).renderer = internals
     }
 
     // resolve props and slots for setup context
+    // 解析初始化一些数据
     if (!(__COMPAT__ && compatMountInstance)) {
-      if (__DEV__) {
-        startMeasure(instance, `init`)
-      }
       setupComponent(instance)
-      if (__DEV__) {
-        endMeasure(instance, `init`)
-      }
     }
 
     // setup() is async. This component relies on async logic to be resolved
@@ -1287,11 +1267,6 @@ function baseCreateRenderer(
       isSVG,
       optimized
     )
-
-    if (__DEV__) {
-      popWarningContext()
-      endMeasure(instance, `mount`)
-    }
   }
 
   // 更新组件节点
@@ -1305,13 +1280,7 @@ function baseCreateRenderer(
       ) {
         // async & still pending - just update props and slots
         // since the component's reactive effect for render isn't set-up yet
-        if (__DEV__) {
-          pushWarningContext(n2)
-        }
         updateComponentPreRender(instance, n2, optimized)
-        if (__DEV__) {
-          popWarningContext()
-        }
         return
       } else {
         // normal update
@@ -1486,9 +1455,6 @@ function baseCreateRenderer(
         let { next, bu, u, parent, vnode } = instance
         let originNext = next
         let vnodeHook: VNodeHook | null | undefined
-        if (__DEV__) {
-          pushWarningContext(next || instance.vnode)
-        }
 
         // Disallow component effect recursion during pre-lifecycle hooks.
         toggleRecurse(instance, false)
@@ -1516,19 +1482,10 @@ function baseCreateRenderer(
         toggleRecurse(instance, true)
 
         // render
-        if (__DEV__) {
-          startMeasure(instance, `render`)
-        }
         const nextTree = renderComponentRoot(instance)
-        if (__DEV__) {
-          endMeasure(instance, `render`)
-        }
         const prevTree = instance.subTree
         instance.subTree = nextTree
 
-        if (__DEV__) {
-          startMeasure(instance, `patch`)
-        }
         patch(
           prevTree,
           nextTree,
@@ -1540,9 +1497,6 @@ function baseCreateRenderer(
           parentSuspense,
           isSVG
         )
-        if (__DEV__) {
-          endMeasure(instance, `patch`)
-        }
         next.el = nextTree.el
         if (originNext === null) {
           // self-triggered update. In case of HOC, update parent component
@@ -1570,18 +1524,10 @@ function baseCreateRenderer(
             parentSuspense
           )
         }
-
-        if (__DEV__ || __FEATURE_PROD_DEVTOOLS__) {
-          devtoolsComponentUpdated(instance)
-        }
-
-        if (__DEV__) {
-          popWarningContext()
-        }
       }
     }
 
-    // create reactive effect for rendering
+    // 组件的更新借助了响应式系统中的 ReactiveEffect 类
     const effect = (instance.effect = new ReactiveEffect(
       componentUpdateFn,
       () => queueJob(update),
@@ -1589,20 +1535,6 @@ function baseCreateRenderer(
     ))
 
     const update: SchedulerJob = (instance.update = () => effect.run())
-    update.id = instance.uid
-    // allowRecurse
-    // #1801, #2043 component render effects should allow recursive updates
-    toggleRecurse(instance, true)
-
-    if (__DEV__) {
-      effect.onTrack = instance.rtc
-        ? e => invokeArrayFns(instance.rtc!, e)
-        : void 0
-      effect.onTrigger = instance.rtg
-        ? e => invokeArrayFns(instance.rtg!, e)
-        : void 0
-      update.ownerInstance = instance
-    }
 
     update()
   }
@@ -1996,7 +1928,6 @@ function baseCreateRenderer(
       const newIndexToOldIndexMap = new Array(toBePatched)
       // newIndexToOldIndexMap 数组默认填充数字 0，数字 0 表明对应的 newVNode 是新增节点，因为其没有对应的 oldVNode
       for (i = 0; i < toBePatched; i++) newIndexToOldIndexMap[i] = 0
-
       // 开始遍历 oldChildren 中未处理的节点
       for (i = s1; i <= e1; i++) {
         // 获取当前循环的 oldVNode
@@ -2103,7 +2034,7 @@ function baseCreateRenderer(
             move(nextChild, container, anchor, MoveType.REORDER)
           } else {
             // 在这里，说明 i === increasingNewIndexSequence[j]，所以当前的 newVNode 不需要进行移动操作
-            // 消耗掉一个递增子序列中的数据，j--
+            // 需要消耗掉一个递增子序列中的数据，j--
             j--
           }
         }
