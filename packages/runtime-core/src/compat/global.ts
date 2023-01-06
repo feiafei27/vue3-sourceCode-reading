@@ -173,10 +173,17 @@ export function createCompatVue(
   Vue.version = `2.6.14-compat:${__VERSION__}`
   Vue.config = singletonApp.config
 
+  // use 方法的作用是：安装一个插件。
+  // 该方法能够安装插件的核心原理是：use 方法内部会以 Vue 为第一个参数执行插件的 install 方法，
+  // 在 install 方法内部，使用 Vue 的应用实例 API 进行一系列的注册操作就可以了。
   Vue.use = (p, ...options) => {
+    // Vue 插件有两种形式：1.带有install方法的对象。2.直接就是一个函数。
+    // 下面对这两种情况进行判断。
+    // 如果 p 存在，并且 p.install 也是个函数的话，则以 Vue 和 options 为参数执行 p.install 函数。
     if (p && isFunction(p.install)) {
       p.install(Vue as any, ...options)
     } else if (isFunction(p)) {
+      // 如果 p 本身就是个函数的话，直接以 Vue 和 options 为参数执行 p 函数
       p(Vue as any, ...options)
     }
     return Vue
